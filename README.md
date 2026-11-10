@@ -259,46 +259,11 @@ PR 比较的是「**你这条分支**」和「**组织的 main**」之间的全�
 
 > 一定看清楚：`findChessboardCorners(img, cv::Size(10, 7), corners)` 里的 10 和 7 是**内角点**的数量——黑白格交界处的那些点，**不是方格的数量**。写成 11×8 会一个角点都检不出来。
 
+棋盘格每格 **15 mm**。这个边长只影响平移向量 `tvecs` 的物理尺度，**不影响内参 `K` 和畸变系数 `D`**——填 15、填 1.0 还是填 25，算出来的内参是一样的。
+
 这套图我实测过：**113 张里 96 张能正常检出角点**。剩下十几张因为棋盘格出了画面、或者拍糊了，检不出来是正常的，不用纠结——能检出 90 张以上就足够标定了。
 
 ⚠️ **这 113 张图不要提交进仓库**（一共 7.7 MB，每个人都传一份仓库会被撑爆）。把 zip 解压到你电脑上任意位置（比如 `D:\cam_mix_img\`），代码里用命令行参数传目录路径；仓库里只放**代码**和你自己跑出来的**结果图**。
-
-#### 代码流程（照着这个顺序写就行）
-
-```cpp
-// 1. 物体坐标：棋盘格在"世界坐标系"里的坐标，Z 恒为 0
-std::vector<cv::Point3f> obj;
-for (int r = 0; r < 7; ++r)              // 7 行内角点
-    for (int c = 0; c < 10; ++c)         // 10 列内角点
-        obj.emplace_back(c * squareSize, r * squareSize, 0.0f);
-
-// 2. 逐张图找角点，找到的存进两个容器
-std::vector<std::vector<cv::Point3f>> objPoints;
-std::vector<std::vector<cv::Point2f>> imgPoints;
-for (const auto& path : imagePaths) {
-    cv::Mat gray = cv::imread(path, cv::IMREAD_GRAYSCALE);
-    if (gray.empty()) continue;
-    std::vector<cv::Point2f> corners;
-    if (!cv::findChessboardCorners(gray, cv::Size(10, 7), corners)) continue;  // 没检出就跳过，别中断
-    cv::cornerSubPix(gray, corners, cv::Size(11, 11), cv::Size(-1, -1),
-        cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 30, 0.001));
-    objPoints.push_back(obj);
-    imgPoints.push_back(corners);
-}
-
-// 3. 标定
-cv::Mat K, D;
-std::vector<cv::Mat> rvecs, tvecs;
-double rms = cv::calibrateCamera(objPoints, imgPoints, imageSize, K, D, rvecs, tvecs);
-std::cout << "RMS = " << rms << "\nK = " << K << "\nD = " << D << std::endl;
-
-// 4. 矫正
-cv::Mat dst;
-cv::undistort(src, dst, K, D);
-cv::imwrite("undistort_result.jpg", dst);
-```
-
-方块的真实边长（`squareSize`）你不知道也没关系——**填 1.0 或 25.0 都行**，它只影响平移量 `tvecs`，**不影响内参 `K` 和畸变系数 `D`**。
 
 #### 结果对不对，怎么自己判断
 
